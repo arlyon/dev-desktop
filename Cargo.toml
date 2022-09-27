@@ -15,6 +15,7 @@ yew = "0.19"
 commands = { version = "0.1.0", path = "commands" }
 async-trait = "0.1.57"
 gloo-timers = "0.2.4"
+yew-hooks = "0.1.56"
 
 [workspace]
 members = ["src-tauri", "commands"]

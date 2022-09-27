@@ -59,6 +59,7 @@
         "height": 600,
         "resizable": true,
         "title": "Developer Dashboard",
+        "visible": false,
         "width": 800
       }
     ]

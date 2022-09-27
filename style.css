@@ -1,6 +1,11 @@
 .logo.yew:hover {
   filter: drop-shadow(0 0 2em #20a88a);
 }
+
+body {
+  margin: 0;
+}
+
 :root {
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
@@ -19,7 +24,6 @@
 
 .container {
   margin: 0;
-  padding-top: 10vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -66,7 +70,7 @@ button {
   font-family: inherit;
   color: #0f0f0f;
   background-color: #ffffff;
-  transition: border-color 0.25s;
+  transition: color 0.1s ease, border-color 0.1s ease;
   box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
 }
 
@@ -92,12 +96,13 @@ button {
   flex-direction: row;
   gap: 1em;
   width: 100%;
-  padding: 1em 0;
+  /* padding: 1em 0; */
   overflow-x: scroll;
   justify-content: center;
 }
 
 .button {
+  background-color: white;
   border: 1px solid rgb(224, 224, 224);
   padding:  0.6em 1em;
   border-radius: 3px;
@@ -105,6 +110,15 @@ button {
   flex-direction: row;
   align-items: center;
   gap: 0.5em;
+}
+
+button.connected {
+  color: rgb(20, 200, 68);
+}
+
+button.connected:hover {
+  border-color: #f00;
+  color: #f00;
 }
 
 .button:hover {
