@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
+use chrono::{Duration, Local};
+use chrono_humanize::HumanTime;
 use commands::{
-    Command, ListContainerResponse, ListContainers, ListTunnelResponse, ListTunnels, PodmanStatus,
+    Command, ListContainerResponse, ListContainers, ListTunnelResponse, ListTunnels, PodmanState,
     SetContainerStatus, ToggleTunnels, TunnelState, TunnelStatus,
 };
 use gloo_timers::callback::Timeout;
@@ -29,10 +31,7 @@ pub fn app() -> Html {
     use_effect_with_deps(
         |[_]| {
             spawn_local(async move {
-                println!(
-                    "mounted! {:?}",
-                    invoke("show", to_value(&GreetArgs {}).unwrap()).await
-                );
+                invoke("show", JsValue::undefined()).await;
             });
             || {}
         },
@@ -41,11 +40,12 @@ pub fn app() -> Html {
 
     html! {
         <main>
-            <div style="padding: 2em 0; background-image: linear-gradient(#00F, #00C); display: flex; justify-content: center; align-items: center">
-                <img src="public/md-symbol-white@2x.png" class="logo tauri" alt="Tauri logo" style="padding-bottom: 3em" />
+            <div data-tauri-drag-region={Some("true")} class="navbar">
+                <img src="public/md-symbol-white@2x.png" class="logo tauri" alt="Tauri logo" />
+                <div style="font-weight: 600; letter-spacing: 0.2em; padding-bottom: 2em">{"DEVTOOLS"}</div>
             </div>
             <div class="container">
-            <div class="button-container" style="padding: 2em 0em; padding-top: 0; margin-top: -1.5em">
+            <div class="button-container" style="padding: 1em 1em; box-sizing: border-box; padding-top: 0; margin: 1em auto; margin-top: -1.5em; width: auto; max-width: 100vw">
                 <a class="button" href="https://019590178469.signin.aws.amazon.com/console" target="_blank">
                     <svg width="1.2em" height="1em" viewBox="0 0 256 153" version="1.1" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid">
                         <g>
@@ -53,7 +53,7 @@ pub fn app() -> Html {
                             <path d="M230.993377,120.964238 C203.104636,141.562914 162.58543,152.498013 127.745695,152.498013 C78.9192053,152.498013 34.9245033,134.442384 1.69536424,104.434437 C-0.932450331,102.060927 1.4410596,98.8397351 4.57748344,100.704636 C40.5192053,121.557616 84.8529801,134.188079 130.712583,134.188079 C161.65298,134.188079 195.645033,127.745695 226.924503,114.521854 C231.586755,112.402649 235.570861,117.57351 230.993377,120.964238 Z M242.606623,107.740397 C239.046358,103.162914 219.04106,105.536424 209.970861,106.638411 C207.258278,106.977483 206.834437,104.603974 209.292715,102.823841 C225.229139,91.6344371 251.422517,94.8556291 254.474172,98.5854305 C257.525828,102.4 253.62649,128.593377 238.707285,141.139073 C236.418543,143.088742 234.21457,142.071523 235.231788,139.528477 C238.622517,131.136424 246.166887,112.233113 242.606623,107.740397 Z" fill="currentColor"></path>
                         </g>
                     </svg>
-                    {"AWS Dashboard"}
+                    <span style="width: max-content">{"AWS Dashboard"}</span>
                 </a>
                 <a class="button" href="https://github.com/pulls?q=is%3Apr+author%3A%40me+archived%3Afalse+label%3Areleased+-label%3Achecked+" target="_blank">
                     <svg width="1em" height="1em" viewBox="0 0 256 250" version="1.1" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid">
@@ -61,7 +61,7 @@ pub fn app() -> Html {
                             <path d="M128.00106,0 C57.3172926,0 0,57.3066942 0,128.00106 C0,184.555281 36.6761997,232.535542 87.534937,249.460899 C93.9320223,250.645779 96.280588,246.684165 96.280588,243.303333 C96.280588,240.251045 96.1618878,230.167899 96.106777,219.472176 C60.4967585,227.215235 52.9826207,204.369712 52.9826207,204.369712 C47.1599584,189.574598 38.770408,185.640538 38.770408,185.640538 C27.1568785,177.696113 39.6458206,177.859325 39.6458206,177.859325 C52.4993419,178.762293 59.267365,191.04987 59.267365,191.04987 C70.6837675,210.618423 89.2115753,204.961093 96.5158685,201.690482 C97.6647155,193.417512 100.981959,187.77078 104.642583,184.574357 C76.211799,181.33766 46.324819,170.362144 46.324819,121.315702 C46.324819,107.340889 51.3250588,95.9223682 59.5132437,86.9583937 C58.1842268,83.7344152 53.8029229,70.715562 60.7532354,53.0843636 C60.7532354,53.0843636 71.5019501,49.6441813 95.9626412,66.2049595 C106.172967,63.368876 117.123047,61.9465949 128.00106,61.8978432 C138.879073,61.9465949 149.837632,63.368876 160.067033,66.2049595 C184.49805,49.6441813 195.231926,53.0843636 195.231926,53.0843636 C202.199197,70.715562 197.815773,83.7344152 196.486756,86.9583937 C204.694018,95.9223682 209.660343,107.340889 209.660343,121.315702 C209.660343,170.478725 179.716133,181.303747 151.213281,184.472614 C155.80443,188.444828 159.895342,196.234518 159.895342,208.176593 C159.895342,225.303317 159.746968,239.087361 159.746968,243.303333 C159.746968,246.709601 162.05102,250.70089 168.53925,249.443941 C219.370432,232.499507 256,184.536204 256,128.00106 C256,57.3066942 198.691187,0 128.00106,0 Z M47.9405593,182.340212 C47.6586465,182.976105 46.6581745,183.166873 45.7467277,182.730227 C44.8183235,182.312656 44.2968914,181.445722 44.5978808,180.80771 C44.8734344,180.152739 45.876026,179.97045 46.8023103,180.409216 C47.7328342,180.826786 48.2627451,181.702199 47.9405593,182.340212 Z M54.2367892,187.958254 C53.6263318,188.524199 52.4329723,188.261363 51.6232682,187.366874 C50.7860088,186.474504 50.6291553,185.281144 51.2480912,184.70672 C51.8776254,184.140775 53.0349512,184.405731 53.8743302,185.298101 C54.7115892,186.201069 54.8748019,187.38595 54.2367892,187.958254 Z M58.5562413,195.146347 C57.7719732,195.691096 56.4895886,195.180261 55.6968417,194.042013 C54.9125733,192.903764 54.9125733,191.538713 55.713799,190.991845 C56.5086651,190.444977 57.7719732,190.936735 58.5753181,192.066505 C59.3574669,193.22383 59.3574669,194.58888 58.5562413,195.146347 Z M65.8613592,203.471174 C65.1597571,204.244846 63.6654083,204.03712 62.5716717,202.981538 C61.4524999,201.94927 61.1409122,200.484596 61.8446341,199.710926 C62.5547146,198.935137 64.0575422,199.15346 65.1597571,200.200564 C66.2704506,201.230712 66.6095936,202.705984 65.8613592,203.471174 Z M75.3025151,206.281542 C74.9930474,207.284134 73.553809,207.739857 72.1039724,207.313809 C70.6562556,206.875043 69.7087748,205.700761 70.0012857,204.687571 C70.302275,203.678621 71.7478721,203.20382 73.2083069,203.659543 C74.6539041,204.09619 75.6035048,205.261994 75.3025151,206.281542 Z M86.046947,207.473627 C86.0829806,208.529209 84.8535871,209.404622 83.3316829,209.4237 C81.8013,209.457614 80.563428,208.603398 80.5464708,207.564772 C80.5464708,206.498591 81.7483088,205.631657 83.2786917,205.606221 C84.8005962,205.576546 86.046947,206.424403 86.046947,207.473627 Z M96.6021471,207.069023 C96.7844366,208.099171 95.7267341,209.156872 94.215428,209.438785 C92.7295577,209.710099 91.3539086,209.074206 91.1652603,208.052538 C90.9808515,206.996955 92.0576306,205.939253 93.5413813,205.66582 C95.054807,205.402984 96.4092596,206.021919 96.6021471,207.069023 Z" fill="currentColor" />
                         </g>
                     </svg>
-                    {"Unconfirmed PRs"}
+                    <span style="width: max-content">{"Unconfirmed PRs"}</span>
                 </a>
                 <a class="button" href="https://github.com/pulls/review-requested" target="_blank">
                     <svg width="1em" height="1em" viewBox="0 0 256 250" version="1.1" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid">
@@ -69,14 +69,14 @@ pub fn app() -> Html {
                             <path d="M128.00106,0 C57.3172926,0 0,57.3066942 0,128.00106 C0,184.555281 36.6761997,232.535542 87.534937,249.460899 C93.9320223,250.645779 96.280588,246.684165 96.280588,243.303333 C96.280588,240.251045 96.1618878,230.167899 96.106777,219.472176 C60.4967585,227.215235 52.9826207,204.369712 52.9826207,204.369712 C47.1599584,189.574598 38.770408,185.640538 38.770408,185.640538 C27.1568785,177.696113 39.6458206,177.859325 39.6458206,177.859325 C52.4993419,178.762293 59.267365,191.04987 59.267365,191.04987 C70.6837675,210.618423 89.2115753,204.961093 96.5158685,201.690482 C97.6647155,193.417512 100.981959,187.77078 104.642583,184.574357 C76.211799,181.33766 46.324819,170.362144 46.324819,121.315702 C46.324819,107.340889 51.3250588,95.9223682 59.5132437,86.9583937 C58.1842268,83.7344152 53.8029229,70.715562 60.7532354,53.0843636 C60.7532354,53.0843636 71.5019501,49.6441813 95.9626412,66.2049595 C106.172967,63.368876 117.123047,61.9465949 128.00106,61.8978432 C138.879073,61.9465949 149.837632,63.368876 160.067033,66.2049595 C184.49805,49.6441813 195.231926,53.0843636 195.231926,53.0843636 C202.199197,70.715562 197.815773,83.7344152 196.486756,86.9583937 C204.694018,95.9223682 209.660343,107.340889 209.660343,121.315702 C209.660343,170.478725 179.716133,181.303747 151.213281,184.472614 C155.80443,188.444828 159.895342,196.234518 159.895342,208.176593 C159.895342,225.303317 159.746968,239.087361 159.746968,243.303333 C159.746968,246.709601 162.05102,250.70089 168.53925,249.443941 C219.370432,232.499507 256,184.536204 256,128.00106 C256,57.3066942 198.691187,0 128.00106,0 Z M47.9405593,182.340212 C47.6586465,182.976105 46.6581745,183.166873 45.7467277,182.730227 C44.8183235,182.312656 44.2968914,181.445722 44.5978808,180.80771 C44.8734344,180.152739 45.876026,179.97045 46.8023103,180.409216 C47.7328342,180.826786 48.2627451,181.702199 47.9405593,182.340212 Z M54.2367892,187.958254 C53.6263318,188.524199 52.4329723,188.261363 51.6232682,187.366874 C50.7860088,186.474504 50.6291553,185.281144 51.2480912,184.70672 C51.8776254,184.140775 53.0349512,184.405731 53.8743302,185.298101 C54.7115892,186.201069 54.8748019,187.38595 54.2367892,187.958254 Z M58.5562413,195.146347 C57.7719732,195.691096 56.4895886,195.180261 55.6968417,194.042013 C54.9125733,192.903764 54.9125733,191.538713 55.713799,190.991845 C56.5086651,190.444977 57.7719732,190.936735 58.5753181,192.066505 C59.3574669,193.22383 59.3574669,194.58888 58.5562413,195.146347 Z M65.8613592,203.471174 C65.1597571,204.244846 63.6654083,204.03712 62.5716717,202.981538 C61.4524999,201.94927 61.1409122,200.484596 61.8446341,199.710926 C62.5547146,198.935137 64.0575422,199.15346 65.1597571,200.200564 C66.2704506,201.230712 66.6095936,202.705984 65.8613592,203.471174 Z M75.3025151,206.281542 C74.9930474,207.284134 73.553809,207.739857 72.1039724,207.313809 C70.6562556,206.875043 69.7087748,205.700761 70.0012857,204.687571 C70.302275,203.678621 71.7478721,203.20382 73.2083069,203.659543 C74.6539041,204.09619 75.6035048,205.261994 75.3025151,206.281542 Z M86.046947,207.473627 C86.0829806,208.529209 84.8535871,209.404622 83.3316829,209.4237 C81.8013,209.457614 80.563428,208.603398 80.5464708,207.564772 C80.5464708,206.498591 81.7483088,205.631657 83.2786917,205.606221 C84.8005962,205.576546 86.046947,206.424403 86.046947,207.473627 Z M96.6021471,207.069023 C96.7844366,208.099171 95.7267341,209.156872 94.215428,209.438785 C92.7295577,209.710099 91.3539086,209.074206 91.1652603,208.052538 C90.9808515,206.996955 92.0576306,205.939253 93.5413813,205.66582 C95.054807,205.402984 96.4092596,206.021919 96.6021471,207.069023 Z" fill="currentColor" />
                         </g>
                     </svg>
-                    {"Review Requests"}
+                    <span style="width: max-content">{"Review Requests"}</span>
                 </a>
                 <a class="button" href="https://app.clickup.com/14312306/v/l/dmrvj-1488?pr=26304556" target="_blank">
                     <svg width="1em" height="1em" viewBox="0 0 126 125" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path fill-rule="evenodd" clip-rule="evenodd" d="M25.9434 85.7138L39.4618 75.3593C46.6406 84.7317 54.2642 89.0508 62.7593 89.0508C71.2072 89.0508 78.6213 84.7815 85.4783 75.4832L99.1831 85.5899C89.2965 98.9962 76.9963 106.079 62.7593 106.079C48.5693 106.079 36.1552 99.046 25.9434 85.7138Z" fill="currentColor"/>
                         <path fill-rule="evenodd" clip-rule="evenodd" d="M62.7135 40.7078L38.6528 61.4406L27.5371 48.5407L62.7614 18.1885L97.7118 48.5644L86.5414 61.417L62.7135 40.7078Z" fill="currentColor"/>
                     </svg>
-                    {"Clickup Tasks"}
+                    <span style="width: max-content">{"Clickup Tasks"}</span>
                 </a>
             </div>
             <Section title="Frontend">
@@ -104,9 +104,9 @@ pub struct SectionProps {
 #[function_component(Section)]
 fn section(props: &SectionProps) -> Html {
     html! {
-        <div style="border-top: 1px solid rgb(224, 224, 224); position: relative; padding: 2em; 1em">
+        <div style="border-top: 1px solid rgb(224, 224, 224); position: relative; padding: 2em 1em">
             <header style="position: absolute; top: -13px; font-weight: 500; left: 10px; background-color: #f6f6f6; color: rgb(180, 180, 180); padding: 0 0.8em;">{&props.title}</header>
-            <div class="button-container">
+            <div>
                 { for props.children.iter() }
             </div>
         </div>
@@ -136,7 +136,7 @@ fn podman_section(props: &PodmanSectionProps) -> Html {
         <Section title="Podman">
             <div style="display: flex; flex-direction: column; width: 100%; gap: 0.5em">{match &*greet_msg {
             Some(ListContainerResponse::Ok(items)) => html! {
-                { items.iter().cloned().map(|entry| html!{<PodmanEntry id={entry.id} title={entry.name} status={entry.status} />}).collect::<Html>() }
+                { items.iter().cloned().map(|entry| html!{<PodmanEntry id={entry.id} title={entry.name} state={entry.state} started_at={entry.started_at} exited_at={entry.exited_at} link={Some("http://localhost:5601")} />}).collect::<Html>() }
             },
             _ => html! {{"Loading"}}
         }}</div></Section>
@@ -147,7 +147,10 @@ fn podman_section(props: &PodmanSectionProps) -> Html {
 pub struct PodmanEntryProps {
     id: Option<String>,
     title: String,
-    status: PodmanStatus,
+    state: PodmanState,
+    started_at: Option<i64>,
+    exited_at: Option<i64>,
+    link: Option<String>,
 }
 
 #[function_component(PodmanEntry)]
@@ -160,22 +163,54 @@ fn podman_entry(props: &PodmanEntryProps) -> Html {
                 Some(s) => s.clone(),
                 None => return,
             };
-            let status = match &props.status {
-                PodmanStatus::Running => PodmanStatus::Stopped,
-                _ => PodmanStatus::Running,
+            let desired_state = match &props.state {
+                PodmanState::Running => PodmanState::Stopped,
+                _ => PodmanState::Running,
             };
             spawn_local(async move {
-                let resp = SetContainerStatus { id, status }.invoke().await;
+                SetContainerStatus {
+                    id,
+                    state: desired_state,
+                }
+                .invoke()
+                .await;
             });
         })
     };
+
+    let local = Local::now().timestamp();
+    let start = match &props.state {
+        PodmanState::Running => props.started_at.unwrap_or(0),
+        _ => props.exited_at.unwrap_or(0),
+    };
+
+    let dur = Duration::seconds(start - local);
+    let human = HumanTime::from(dur);
+
     html! {
-        <div style="display: flex; align-items: center; justify-content: space-between"><div>{&props.title}</div><button onclick={toggle}>{match props.status {
-            PodmanStatus::Running => "Running",
-            PodmanStatus::Exited => "Exited",
-            PodmanStatus::Stopped=> "Stopped",
-            PodmanStatus::Stopping=> "Stopping",
-        }}</button></div>
+        <div class="podman-card" style="background-color: white; border-radius: 0.5em; border: 1px solid #eee">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5em 1em;">
+                <div style="display:flex; flex-direction: column; font-weight: 500;">
+                    <div>{&props.title}</div>
+                    <div style="text-align: left; font-weight: 400; font-size: 0.9em; opacity: 0.3">{human}</div>
+                </div>
+                <button onclick={toggle}>
+                    {match props.state {
+                        PodmanState::Running => "Running",
+                        PodmanState::Exited => "Exited",
+                        PodmanState::Stopped=> "Stopped",
+                        PodmanState::Stopping=> "Stopping",
+                    }}
+                </button>
+            </div>
+            {match props.link.clone() {
+                Some(link) => html!{ <a href={link} target="_blank" style="display: block; text-align: left; background-color: #d6ffd6; border-bottom-right-radius: 0.5rem; border-bottom-left-radius: 0.5rem; font-family: monospace; font-size: 0.8em; padding: 0.2em 1em; border: 1px solid rgb(175, 254, 137)">
+                    {"http://localhost:5601"}
+                </a>},
+                _ => html!{},
+            }}
+
+        </div>
     }
 }
 
@@ -202,6 +237,7 @@ fn ssh_section(props: &SSHSectionProps) -> Html {
 
     html! {
         <Section title="SSH Tunnel">
+        <div style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 1em">
         {match &*greet_msg {
             Some(ListTunnelResponse(a, b)) => html! {{
                 [a, b].into_iter().cloned()
@@ -210,6 +246,7 @@ fn ssh_section(props: &SSHSectionProps) -> Html {
             }},
             _ => html! {{"Loading"}}
         }}
+        </div>
         </Section>
     }
 }
@@ -238,7 +275,7 @@ fn ssh_toggle(props: &SSHToggleProps) -> Html {
     };
 
     html! {
-        <button onclick={toggle} style="flex: 1; display: flex; justify-content: space-between; gap: 1em" class={if props.status == TunnelStatus::Disconnected {""} else {"connected"}}>
+        <button onclick={toggle} style="flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 2em" class={if props.status == TunnelStatus::Disconnected {""} else {"connected"}}>
             {&props.name}
             <span>{match props.status {
                 TunnelStatus::Connected(i) => i.to_string(),

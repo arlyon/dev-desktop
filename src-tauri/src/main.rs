@@ -3,10 +3,12 @@
     windows_subsystem = "windows"
 )]
 
+#[cfg(all(feature = "cocoa", target_os = "macos"))]
+mod macos;
 mod tunnel;
 
 use commands::{
-    ListContainerItem, ListContainerResponse, ListTunnelResponse, PodmanStatus, TunnelState,
+    ListContainerItem, ListContainerResponse, ListTunnelResponse, PodmanState, TunnelState,
     TunnelStatus,
 };
 use podman_api::{
@@ -101,21 +103,23 @@ async fn containers_list() -> ListContainerResponse {
                             .and_then(|n| n.iter().next())
                             .unwrap_or(&"unknown".to_string())
                             .to_string(),
-                        status: c
+                        state: c
                             .state
                             .and_then(|s| match s.as_str() {
-                                "running" => Some(PodmanStatus::Running),
-                                "exited" => Some(PodmanStatus::Exited),
-                                "stopping" => Some(PodmanStatus::Stopping),
+                                "running" => Some(PodmanState::Running),
+                                "exited" => Some(PodmanState::Exited),
+                                "stopping" => Some(PodmanState::Stopping),
                                 x => {
                                     println!("{:?}", x);
                                     None
                                 }
                             })
-                            .unwrap_or(PodmanStatus::Stopped),
+                            .unwrap_or(PodmanState::Stopped),
+                        started_at: c.started_at,
+                        exited_at: c.exited_at,
                     })
                     .collect::<Vec<_>>();
-                data.sort_by_key(|f| f.status);
+                data.sort_by_key(|f| f.state);
                 data
             })
         })
@@ -123,12 +127,12 @@ async fn containers_list() -> ListContainerResponse {
 }
 
 #[tauri::command]
-async fn set_container(id: String, status: PodmanStatus) -> () {
-    println!("setting container {} to {:?}", id, status);
+async fn set_container(id: String, state: PodmanState) -> () {
+    println!("setting container {} to {:?}", id, state);
     let podman = Podman::unix("/run/user/1000/podman/podman.sock");
     let container = podman.containers().get(id);
-    match status {
-        PodmanStatus::Running => container.start(None).await,
+    match state {
+        PodmanState::Running => container.start(None).await,
         _ => container.stop(&Default::default()).await,
     };
 }
@@ -189,6 +193,17 @@ fn show(window: tauri::Window) {
 
 fn main() {
     tauri::Builder::default()
+        .setup(|app| {
+            let win = app.get_window("main").unwrap();
+
+            #[cfg(all(feature = "cocoa", target_os = "macos"))]
+            {
+                use macos::WindowExt;
+                win.set_transparent_titlebar(true);
+            }
+
+            Ok(())
+        })
         .manage(SSHTunnelState(Mutex::new(SSHTunnels {
             production: SSHTunnelConnection {
                 task: None,

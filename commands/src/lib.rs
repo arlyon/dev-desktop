@@ -32,11 +32,13 @@ pub enum ListContainerResponse {
 pub struct ListContainerItem {
     pub id: Option<String>,
     pub name: String,
-    pub status: PodmanStatus,
+    pub state: PodmanState,
+    pub started_at: Option<i64>,
+    pub exited_at: Option<i64>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Copy)]
-pub enum PodmanStatus {
+pub enum PodmanState {
     Running,
     Stopping,
     Stopped,
@@ -55,7 +57,7 @@ impl Command for ListContainers {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SetContainerStatus {
     pub id: String,
-    pub status: PodmanStatus,
+    pub state: PodmanState,
 }
 
 #[async_trait::async_trait(?Send)]
