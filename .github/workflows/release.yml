@@ -54,6 +54,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+          target: wasm32-unknown-unknown
       - uses: actions-rs/install@v0.1
         with:
           crate: trunk
