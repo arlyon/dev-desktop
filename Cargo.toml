@@ -21,7 +21,3 @@ yew-hooks = "0.1.56"
 
 [workspace]
 members = ["src-tauri", "commands"]
-
-[patch.crates-io]
-containers-api = {path = "../containers-api"}
-podman-api = {path = "../podman-api-rs"}
