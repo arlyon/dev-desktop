@@ -239,8 +239,8 @@ fn ssh_section(props: &SSHSectionProps) -> Html {
         <Section title="SSH Tunnel">
         <div style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 1em">
         {match &*greet_msg {
-            Some(ListTunnelResponse(a, b)) => html! {{
-                [a, b].into_iter().cloned()
+            Some(ListTunnelResponse(vec)) => html! {{
+                vec.into_iter().cloned()
                     .map(|(name, status)| html!{<SSHToggle name={name} status={status} />})
                     .collect::<Html>()
             }},

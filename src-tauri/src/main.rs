@@ -2,25 +2,33 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
+#![feature(box_patterns)]
 
+mod config;
 #[cfg(all(feature = "cocoa", target_os = "macos"))]
 mod macos;
 mod tunnel;
+
+use std::{fs::File, path::PathBuf};
 
 use commands::{
     ListContainerItem, ListContainerResponse, ListTunnelResponse, PodmanState, TunnelState,
     TunnelStatus,
 };
+use directories::ProjectDirs;
 use podman_api::{
     opts::{ContainerListFilter, ContainerListOpts},
     Podman,
 };
 use tauri::{
-    async_runtime::{JoinHandle, Mutex},
+    api::cli::{Matches, SubcommandMatches},
+    async_runtime::{block_on, JoinHandle, Mutex},
     Manager,
 };
 use tokio_util::sync::CancellationToken;
 use tunnel::Tunnel;
+
+use crate::config::Config;
 
 struct SSHTunnelConnection {
     task: Option<(CancellationToken, JoinHandle<()>)>,
@@ -67,11 +75,13 @@ impl SSHTunnelConnection {
     }
 }
 
-struct SSHTunnels {
-    production: SSHTunnelConnection,
-    staging: SSHTunnelConnection,
+impl From<Tunnel> for SSHTunnelConnection {
+    fn from(tunnel: Tunnel) -> Self {
+        Self { task: None, tunnel }
+    }
 }
 
+struct SSHTunnels(Vec<SSHTunnelConnection>);
 struct SSHTunnelState(Mutex<SSHTunnels>);
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
@@ -141,24 +151,21 @@ async fn set_container(id: String, state: PodmanState) -> () {
 #[tauri::command]
 async fn tunnels_list(state: tauri::State<'_, SSHTunnelState>) -> Result<ListTunnelResponse, ()> {
     let mut tunnels = state.0.lock().await;
-    Ok(ListTunnelResponse(
-        (
-            "Production".to_string(),
-            if tunnels.production.connected() {
-                TunnelStatus::Connected(tunnels.production.tunnel.local_port)
-            } else {
-                TunnelStatus::Disconnected
-            },
-        ),
-        (
-            "Staging".to_string(),
-            if tunnels.staging.connected() {
-                TunnelStatus::Connected(tunnels.staging.tunnel.local_port)
-            } else {
-                TunnelStatus::Disconnected
-            },
-        ),
-    ))
+    let vals = tunnels
+        .0
+        .iter_mut()
+        .map(|t| {
+            (
+                t.tunnel.name.clone(),
+                if t.connected() {
+                    TunnelStatus::Connected(t.tunnel.local_port)
+                } else {
+                    TunnelStatus::Disconnected
+                },
+            )
+        })
+        .collect();
+    Ok(ListTunnelResponse(vals))
 }
 
 /// note: we need to return a result here, Err corresponds to an exception so do not use it
@@ -171,10 +178,9 @@ async fn tunnels_toggle(
     println!("setting tunnel {} to {:?}", id, state);
     let mut tunnels = states.0.lock().await;
 
-    let tunnel = match id.as_str() {
-        "Staging" => &mut tunnels.staging,
-        "Production" => &mut tunnels.production,
-        _ => return Ok(()),
+    let tunnel = match tunnels.0.iter_mut().find(|t| t.tunnel.name == id.as_str()) {
+        Some(t) => t,
+        None => return Ok(()),
     };
 
     match state {
@@ -187,13 +193,52 @@ async fn tunnels_toggle(
 
 #[tauri::command]
 fn show(window: tauri::Window) {
-    println!("show!");
     window.get_window("main").unwrap().show().unwrap();
 }
 
 fn main() {
+    let config_dir = ProjectDirs::from("dev", "arlyon", "developer-dashboard")
+        .map(|d| d.config_dir().to_owned());
+    let config_file = config_dir.as_ref().map(|p| p.join("config.yaml"));
+
+    let config: Option<Config> = config_file
+        .as_ref()
+        .and_then(|f| File::open(f).ok())
+        .and_then(|f| serde_yaml::from_reader(f).ok());
+
     tauri::Builder::default()
         .setup(|app| {
+            match app.get_cli_matches() {
+                Ok(Matches {
+                    subcommand: Some(box SubcommandMatches { name, matches, .. }),
+                    ..
+                }) => match name.as_str() {
+                    "fetch" => {
+                        let source_arg = matches.args.get("source").expect("validated by tauri");
+                        let source = source_arg.value.as_str().expect("validated by tauri");
+
+                        let res = block_on(fetch_config(
+                            source,
+                            &app.state::<SSHTunnelState>(),
+                            config_file,
+                        ));
+                        match res {
+                            Ok(_) => {}
+                            Err(e) => {
+                                println!("{}", e);
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    _ => {}
+                },
+                Err(e) => {
+                    println!("{}", e);
+                    std::process::exit(1);
+                }
+                _ => {}
+            };
+
             let win = app.get_window("main").unwrap();
 
             #[cfg(all(feature = "cocoa", target_os = "macos"))]
@@ -204,33 +249,11 @@ fn main() {
 
             Ok(())
         })
-        .manage(SSHTunnelState(Mutex::new(SSHTunnels {
-            production: SSHTunnelConnection {
-                task: None,
-                tunnel: Tunnel {
-                    local_port: 33006,
-                    away_port: 3306,
-                    away_host:
-                        "mdisrupt-production.cluster-ro-cv1p1ugoa6na.us-east-2.rds.amazonaws.com"
-                            .to_string(),
-                    target: "ssm-user@i-0462fc9f5f57202e9".to_string(),
-                    aws_profile: Some("mdisrupt".to_string()),
-                    aws_region: Some("us-east-2".to_string()),
-                },
-            },
-            staging: SSHTunnelConnection {
-                task: None,
-                tunnel: Tunnel {
-                    local_port: 33007,
-                    away_port: 3306,
-                    away_host: "mdisrupt-dev.cluster-c0s6m6qaswhy.us-west-2.rds.amazonaws.com"
-                        .to_string(),
-                    target: "ssm-user@i-0dc81149070588e87".to_string(),
-                    aws_profile: Some("mdisrupt".to_string()),
-                    aws_region: Some("us-west-2".to_string()),
-                },
-            },
-        })))
+        .manage(SSHTunnelState(Mutex::new(SSHTunnels(
+            config
+                .map(|c| c.tunnels.into_iter().map(Into::into).collect())
+                .unwrap_or_default(),
+        ))))
         .invoke_handler(tauri::generate_handler![
             containers_list,
             set_container,
@@ -240,4 +263,32 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+async fn fetch_config(
+    source: &str,
+    config: &SSHTunnelState,
+    config_file: Option<PathBuf>,
+) -> Result<(), String> {
+    println!("fetching config from {}", source);
+    let body = reqwest::blocking::get(source).unwrap().text().unwrap();
+
+    let config_new: Config =
+        serde_yaml::from_str(&body).map_err(|e| format!("invalid config: {}", e))?;
+
+    let config_file = config_file
+        .and_then(|p| {
+            println!("saving config to {:?}", p);
+            std::fs::create_dir_all(&p.parent().expect("this is ok"));
+            File::create(p).ok()
+        })
+        .ok_or_else(|| format!("could not locate config path"))?;
+
+    serde_yaml::to_writer(config_file, &config_new);
+
+    let mut lock = config.0.lock().await;
+    lock.0
+        .extend(config_new.tunnels.into_iter().map(Into::into));
+
+    Ok(())
 }

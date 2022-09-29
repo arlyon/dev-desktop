@@ -11,6 +11,21 @@
     "version": "0.1.0"
   },
   "tauri": {
+    "cli": {
+      "subcommands": {
+        "fetch": {
+          "description": "fetches a developer dashboard config from a url",
+          "args": [
+            {
+              "name": "source",
+              "required": true,
+              "index": 1,
+              "takesValue": true
+            }
+          ]
+        }
+      }
+    },
     "allowlist": {
       "all": true
     },
@@ -29,7 +44,7 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier": "com.mdisrupt.dev",
+      "identifier": "dev.arlyon.developer-dashboard",
       "longDescription": "",
       "macOS": {
         "entitlements": null,

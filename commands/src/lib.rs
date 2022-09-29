@@ -85,7 +85,7 @@ pub enum TunnelState {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-pub struct ListTunnelResponse(pub (String, TunnelStatus), pub (String, TunnelStatus));
+pub struct ListTunnelResponse(pub Vec<(String, TunnelStatus)>);
 
 #[async_trait::async_trait(?Send)]
 impl Command for ListTunnels {

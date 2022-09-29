@@ -1,8 +1,10 @@
+use serde::{Deserialize, Serialize};
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Tunnel {
+    pub name: String,
     pub local_port: u32,
     pub away_port: u32,
     pub away_host: String,
