@@ -7,6 +7,7 @@
 mod config;
 #[cfg(all(feature = "cocoa", target_os = "macos"))]
 mod macos;
+mod spring;
 mod tunnel;
 
 use std::{fs::File, path::PathBuf};
@@ -17,16 +18,20 @@ use commands::{
 };
 use config::ServiceSection;
 use directories::ProjectDirs;
+use futures::future::join_all;
 use podman_api::{
     opts::{ContainerListFilter, ContainerListOpts},
     Podman,
 };
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use spring::SpringHealthCheck;
 use tauri::{
     api::cli::{Matches, SubcommandMatches},
     async_runtime::{block_on, JoinHandle, Mutex},
     Manager,
 };
+use tokio::join;
 use tokio_util::sync::CancellationToken;
 use tunnel::Tunnel;
 
@@ -104,31 +109,33 @@ async fn containers_list() -> ListContainerResponse {
                 let mut data = v
                     .into_iter()
                     .filter(|c| !c.is_infra.unwrap_or(false))
-                    .map(|c| ListContainerItem {
-                        id: {
-                            // println!("{:?}", c);
-                            c.id
-                        },
-                        name: c
-                            .names
-                            .as_ref()
-                            .and_then(|n| n.iter().next())
-                            .unwrap_or(&"unknown".to_string())
-                            .to_string(),
-                        state: c
-                            .state
-                            .and_then(|s| match s.as_str() {
-                                "running" => Some(PodmanState::Running),
-                                "exited" => Some(PodmanState::Exited),
-                                "stopping" => Some(PodmanState::Stopping),
-                                x => {
-                                    println!("{:?}", x);
-                                    None
-                                }
-                            })
-                            .unwrap_or(PodmanState::Stopped),
-                        started_at: c.started_at,
-                        exited_at: c.exited_at,
+                    .map(|c| {
+                        ListContainerItem {
+                            id: {
+                                // println!("{:?}", c);
+                                c.id
+                            },
+                            name: c
+                                .names
+                                .as_ref()
+                                .and_then(|n| n.iter().next())
+                                .unwrap_or(&"unknown".to_string())
+                                .to_string(),
+                            state: c
+                                .state
+                                .and_then(|s| match s.as_str() {
+                                    "running" => Some(PodmanState::Running),
+                                    "exited" => Some(PodmanState::Exited),
+                                    "stopping" => Some(PodmanState::Stopping),
+                                    x => {
+                                        println!("{:?}", x);
+                                        None
+                                    }
+                                })
+                                .unwrap_or(PodmanState::Stopped),
+                            started_at: c.started_at,
+                            exited_at: c.exited_at,
+                        }
                     })
                     .collect::<Vec<_>>();
                 data.sort_by_key(|f| f.state);
@@ -202,39 +209,47 @@ fn show(window: tauri::Window) {
 async fn get_healthcheck(
     state: tauri::State<'_, ServiceHealthCheckState>,
 ) -> Result<Vec<HealthcheckSection>, ()> {
-    Ok(state
-        .0
-        .lock()
-        .await
-        .iter()
-        .cloned()
-        .map(|c| HealthcheckSection {
-            name: c.name,
-            services: c
-                .services
-                .into_iter()
-                .map(|s| ServiceHealthCheck {
-                    up: if s.name.contains("Storybook") {
-                        false
-                    } else {
-                        true
-                    },
-                    url: s.url.to_string(),
-                    db: if s.name == "MDisrupt API" {
-                        Some(true)
-                    } else {
-                        None
-                    },
-                    elasticsearch: if s.name == "MDisrupt API" {
-                        Some(false)
-                    } else {
-                        None
-                    },
-                    name: s.name,
-                })
-                .collect(),
-        })
-        .collect())
+    Ok(
+        join_all(state.0.lock().await.iter().cloned().map(|c| async move {
+            HealthcheckSection {
+                name: c.name,
+                services: join_all(c.services.into_iter().map(|s| async move {
+                    let (up, db, elasticsearch) = match s.spring_healthcheck {
+                        Some(s) => {
+                            match reqwest::get(s).await.ok().filter(|r| {
+                                r.status() == StatusCode::OK
+                                    || r.status() == StatusCode::SERVICE_UNAVAILABLE
+                            }) {
+                                Some(r) => {
+                                    let req: SpringHealthCheck = r.json().await.unwrap();
+                                    (
+                                        req.components.ping.status.into(),
+                                        Some(req.components.db.status.into()),
+                                        Some(req.components.elasticsearch.status.into()),
+                                    )
+                                }
+                                None => (false, None, None),
+                            }
+                        }
+                        None => {
+                            let resp = reqwest::get(s.url.clone()).await;
+                            let up = resp.map(|r| !r.status().is_server_error()).unwrap_or(false);
+                            (up, None, None)
+                        }
+                    };
+                    ServiceHealthCheck {
+                        name: s.name,
+                        up,
+                        url: s.url.to_string(),
+                        db,
+                        elasticsearch,
+                    }
+                }))
+                .await,
+            }
+        }))
+        .await,
+    )
 }
 
 struct ServiceHealthCheckState(Mutex<Vec<ServiceSection>>);

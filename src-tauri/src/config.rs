@@ -31,4 +31,6 @@ pub struct Service {
     pub url: Url,
     /// Optional spring healthcheck URL for more detailed information
     pub spring_healthcheck: Option<Url>,
+    /// Optional command to start the service
+    pub command: Option<String>,
 }
