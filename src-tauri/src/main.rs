@@ -230,12 +230,12 @@ struct ServiceHealthCheckState(Mutex<Vec<ServiceSection>>);
 fn main() {
     let config_dir = ProjectDirs::from("dev", "arlyon", "developer-dashboard")
         .map(|d| d.config_dir().to_owned());
-    let config_file = config_dir.as_ref().map(|p| p.join("config.yaml"));
+    let config_file = config_dir.as_ref().map(|p| p.join("config.json"));
 
     let config: Option<Config> = config_file
         .as_ref()
         .and_then(|f| File::open(f).ok())
-        .and_then(|f| match serde_yaml::from_reader(f) {
+        .and_then(|f| match serde_json::from_reader(f) {
             Ok(c) => Some(c),
             Err(e) => {
                 println!("unable to load config, ignoring: {}", e);
@@ -316,7 +316,7 @@ async fn fetch_config(
     let body = reqwest::blocking::get(source).unwrap().text().unwrap();
 
     let config_new: Config =
-        serde_yaml::from_str(&body).map_err(|e| format!("invalid config: {}", e))?;
+        serde_json::from_str(&body).map_err(|e| format!("invalid config: {}", e))?;
 
     let config_file = config_file
         .and_then(|p| {
@@ -326,7 +326,7 @@ async fn fetch_config(
         })
         .ok_or_else(|| format!("could not locate config path"))?;
 
-    serde_yaml::to_writer(config_file, &config_new);
+    serde_json::to_writer(config_file, &config_new);
 
     let mut lock = config.0.lock().await;
     lock.0
