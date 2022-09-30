@@ -1,8 +1,9 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Tunnel {
     pub name: String,
     pub local_port: u32,

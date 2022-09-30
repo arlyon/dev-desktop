@@ -110,3 +110,30 @@ impl Command for ToggleTunnels {
         "tunnels_toggle"
     }
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct GetHealthCheck {}
+
+#[async_trait::async_trait(?Send)]
+impl Command for GetHealthCheck {
+    type OutputType = Vec<HealthcheckSection>;
+
+    fn name() -> &'static str {
+        "get_healthcheck"
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct HealthcheckSection {
+    pub name: String,
+    pub services: Vec<ServiceHealthCheck>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ServiceHealthCheck {
+    pub name: String,
+    pub url: String,
+    pub up: bool,
+    pub db: Option<bool>,
+    pub elasticsearch: Option<bool>,
+}

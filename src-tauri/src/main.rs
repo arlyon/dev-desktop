@@ -12,14 +12,16 @@ mod tunnel;
 use std::{fs::File, path::PathBuf};
 
 use commands::{
-    ListContainerItem, ListContainerResponse, ListTunnelResponse, PodmanState, TunnelState,
-    TunnelStatus,
+    HealthcheckSection, ListContainerItem, ListContainerResponse, ListTunnelResponse, PodmanState,
+    ServiceHealthCheck, TunnelState, TunnelStatus,
 };
+use config::ServiceSection;
 use directories::ProjectDirs;
 use podman_api::{
     opts::{ContainerListFilter, ContainerListOpts},
     Podman,
 };
+use serde::{Deserialize, Serialize};
 use tauri::{
     api::cli::{Matches, SubcommandMatches},
     async_runtime::{block_on, JoinHandle, Mutex},
@@ -196,6 +198,35 @@ fn show(window: tauri::Window) {
     window.get_window("main").unwrap().show().unwrap();
 }
 
+#[tauri::command]
+async fn get_healthcheck(
+    state: tauri::State<'_, ServiceHealthCheckState>,
+) -> Result<Vec<HealthcheckSection>, ()> {
+    Ok(state
+        .0
+        .lock()
+        .await
+        .iter()
+        .cloned()
+        .map(|c| HealthcheckSection {
+            name: c.name,
+            services: c
+                .services
+                .into_iter()
+                .map(|s| ServiceHealthCheck {
+                    name: s.name,
+                    url: s.url.to_string(),
+                    up: true,
+                    db: None,
+                    elasticsearch: None,
+                })
+                .collect(),
+        })
+        .collect())
+}
+
+struct ServiceHealthCheckState(Mutex<Vec<ServiceSection>>);
+
 fn main() {
     let config_dir = ProjectDirs::from("dev", "arlyon", "developer-dashboard")
         .map(|d| d.config_dir().to_owned());
@@ -204,7 +235,13 @@ fn main() {
     let config: Option<Config> = config_file
         .as_ref()
         .and_then(|f| File::open(f).ok())
-        .and_then(|f| serde_yaml::from_reader(f).ok());
+        .and_then(|f| match serde_yaml::from_reader(f) {
+            Ok(c) => Some(c),
+            Err(e) => {
+                println!("unable to load config, ignoring: {}", e);
+                None
+            }
+        });
 
     tauri::Builder::default()
         .setup(|app| {
@@ -251,14 +288,19 @@ fn main() {
         })
         .manage(SSHTunnelState(Mutex::new(SSHTunnels(
             config
-                .map(|c| c.tunnels.into_iter().map(Into::into).collect())
+                .as_ref()
+                .map(|c| c.tunnels.iter().cloned().map(Into::into).collect())
                 .unwrap_or_default(),
         ))))
+        .manage(ServiceHealthCheckState(Mutex::new(
+            config.map(|c| c.services).unwrap_or_default(),
+        )))
         .invoke_handler(tauri::generate_handler![
             containers_list,
             set_container,
             tunnels_list,
             tunnels_toggle,
+            get_healthcheck,
             show
         ])
         .run(tauri::generate_context!())

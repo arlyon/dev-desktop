@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Config",
+  "type": "object",
+  "required": [
+    "services",
+    "tunnels"
+  ],
+  "properties": {
+    "services": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ServiceSection"
+      }
+    },
+    "tunnels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Tunnel"
+      }
+    }
+  },
+  "definitions": {
+    "Service": {
+      "type": "object",
+      "required": [
+        "name",
+        "url"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "spring_healthcheck": {
+          "description": "Allows you to set a healthcheck",
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "ServiceSection": {
+      "type": "object",
+      "required": [
+        "name",
+        "services"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Service"
+          }
+        }
+      }
+    },
+    "Tunnel": {
+      "type": "object",
+      "required": [
+        "away_host",
+        "away_port",
+        "local_port",
+        "name",
+        "target"
+      ],
+      "properties": {
+        "away_host": {
+          "type": "string"
+        },
+        "away_port": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "aws_profile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "aws_region": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "local_port": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "name": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
