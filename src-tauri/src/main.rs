@@ -214,11 +214,23 @@ async fn get_healthcheck(
                 .services
                 .into_iter()
                 .map(|s| ServiceHealthCheck {
-                    name: s.name,
+                    up: if s.name.contains("Storybook") {
+                        false
+                    } else {
+                        true
+                    },
                     url: s.url.to_string(),
-                    up: true,
-                    db: None,
-                    elasticsearch: None,
+                    db: if s.name == "MDisrupt API" {
+                        Some(true)
+                    } else {
+                        None
+                    },
+                    elasticsearch: if s.name == "MDisrupt API" {
+                        Some(false)
+                    } else {
+                        None
+                    },
+                    name: s.name,
                 })
                 .collect(),
         })

@@ -137,11 +137,14 @@ fn healthcheck_section(props: &HealthcheckSectionProps) -> Html {
     greet_msg
         .iter()
         .cloned()
-        .map(|hc| {
+        .map(|mut hc| {
+            hc.services.sort_by_key(|s| !s.up); // online services first
             html! {
                 <Section title={hc.name}>
+                <div style="display: grid; width: 100%; gap: 1em">
                     {hc.services.iter().cloned().map(|s| html!{<HealthcheckEntry hc={s} />}).collect::<Html>()}
-                </Section>
+                </div>
+                    </Section>
             }
         })
         .collect::<Html>()
@@ -154,9 +157,43 @@ pub struct HealthcheckEntryProps {
 
 #[function_component(HealthcheckEntry)]
 fn healthcheck_entry(props: &HealthcheckEntryProps) -> Html {
-    log(&format!("{:?}", props.hc));
+    let href = props.hc.url.clone();
     html! {
-        <div>{&props.hc.name}</div>
+        <div class="podman-card">
+            <div class="main" style="display: flex; align-items: center; justify-content: space-between; padding: 0.5em 1em; border: 1px solid #ddd; border-top-left-radius: 0.5em; border-top-right-radius: 0.5em; background-color: white">
+                <div style="display:flex; flex-direction: row; align-items: center; gap: 0.5em">
+                <div style="text-align: left; font-weight: 500;">{&props.hc.name}</div>
+                <div style="display: flex; flex-direction: row; gap: 0.5em">
+                    {match props.hc.db {
+                        Some(db) => html!{<div style="border: 1px solid orange; background-color: #fff3cb; font-size: 0.7em; color: orange; padding: 0em 0.5em; border-radius: 0.5em">{"Database"}</div>},
+                        None => html!{}
+                    }}
+                    {match props.hc.elasticsearch {
+                        Some(db) => html!{<div style="border: 1px solid rgb(193, 0, 255); background-color: #eacbff; font-size: 0.7em; color: rgb(193, 0, 255); padding: 0em 0.5em; border-radius: 0.5em">{"Elasticsearch"}</div>},
+                        None => html!{}
+                    }}
+                </div>
+            </div>
+            {match props.hc.up {
+                true => html!{<div class="online">{"ONLINE"}</div>},
+                false => html!{<div class="offline">{"OFFLINE"}</div>},
+            }}
+        </div>
+        {match props.hc.up {
+            true => html!{
+                <a
+                    href={href}
+                    target="_blank"
+                    style={if props.hc.up
+                        {"background-color: #d6ffd6; color: rgb(55, 213, 34); border: 1px solid rgb(175, 254, 137)"}
+                        else {""}
+                    }>
+                    {&props.hc.url}
+                </a>
+            },
+            false => html!{},
+        }}
+    </div>
     }
 }
 
@@ -181,9 +218,18 @@ fn podman_section(props: &PodmanSectionProps) -> Html {
 
     html! {
         <Section title="Podman">
-            <div style="display: flex; flex-direction: column; width: 100%; gap: 0.5em">{match &*greet_msg {
+            <div style="display: flex; flex-direction: column; width: 100%; gap: 1em">{match &*greet_msg {
             Some(ListContainerResponse::Ok(items)) => html! {
-                { items.iter().cloned().map(|entry| html!{<PodmanEntry id={entry.id} title={entry.name} state={entry.state} started_at={entry.started_at} exited_at={entry.exited_at} link={Some("http://localhost:5601")} />}).collect::<Html>() }
+                { items.iter().cloned().map(|entry| html!{
+                    <PodmanEntry
+                        id={entry.id}
+                        title={entry.name}
+                        state={entry.state}
+                        started_at={entry.started_at}
+                        exited_at={entry.exited_at}
+                        link={Some("http://localhost:5601")}
+                    />
+                }).collect::<Html>() }
             },
             _ => html! {{"Loading"}}
         }}</div></Section>
@@ -235,28 +281,36 @@ fn podman_entry(props: &PodmanEntryProps) -> Html {
     let human = HumanTime::from(dur);
 
     html! {
-        <div class="podman-card" style="background-color: white; border-radius: 0.5em; border: 1px solid #eee">
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5em 1em;">
+        <div class="podman-card">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5em 1em; border: 1px solid #ddd; border-top-left-radius: 0.5em; border-top-right-radius: 0.5em; background-color: white">
                 <div style="display:flex; flex-direction: column; font-weight: 500;">
                     <div>{&props.title}</div>
                     <div style="text-align: left; font-weight: 400; font-size: 0.9em; opacity: 0.3">{human}</div>
                 </div>
-                <button onclick={toggle}>
+                <button onclick={toggle} class={if props.state == PodmanState::Running {"online"} else {"offline"}}>
                     {match props.state {
-                        PodmanState::Running => "Running",
-                        PodmanState::Exited => "Exited",
-                        PodmanState::Stopped=> "Stopped",
-                        PodmanState::Stopping=> "Stopping",
+                        PodmanState::Running => "RUNNING",
+                        PodmanState::Exited => "EXITED",
+                        PodmanState::Stopped=> "STOPPED",
+                        PodmanState::Stopping=> "STOPPING",
                     }}
                 </button>
             </div>
             {match props.link.clone() {
-                Some(link) => html!{ <a href={link} target="_blank" style="display: block; text-align: left; background-color: #d6ffd6; border-bottom-right-radius: 0.5rem; border-bottom-left-radius: 0.5rem; font-family: monospace; font-size: 0.8em; padding: 0.2em 1em; border: 1px solid rgb(175, 254, 137)">
-                    {"http://localhost:5601"}
-                </a>},
+                Some(link) => html!{
+                    <a
+                        href={link.clone()}
+                        target="_blank"
+                        style={if props.state == PodmanState::Running
+                            {"background-color: #d6ffd6; color: rgb(55, 213, 34); border: 1px solid rgb(175, 254, 137)"}
+                            else {""}
+                        }
+                    >
+                        {&link}
+                    </a>
+                },
                 _ => html!{},
             }}
-
         </div>
     }
 }
