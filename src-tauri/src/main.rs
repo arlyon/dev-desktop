@@ -2,7 +2,6 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
-#![feature(box_patterns)]
 
 mod config;
 #[cfg(all(feature = "cocoa", target_os = "macos"))]
@@ -274,28 +273,32 @@ fn main() {
         .setup(|app| {
             match app.get_cli_matches() {
                 Ok(Matches {
-                    subcommand: Some(box SubcommandMatches { name, matches, .. }),
+                    subcommand: Some(cmd),
                     ..
-                }) => match name.as_str() {
-                    "fetch" => {
-                        let source_arg = matches.args.get("source").expect("validated by tauri");
-                        let source = source_arg.value.as_str().expect("validated by tauri");
+                }) => {
+                    let SubcommandMatches { name, matches, .. } = *cmd;
+                    match name.as_str() {
+                        "fetch" => {
+                            let source_arg =
+                                matches.args.get("source").expect("validated by tauri");
+                            let source = source_arg.value.as_str().expect("validated by tauri");
 
-                        let res = block_on(fetch_config(
-                            source,
-                            &app.state::<SSHTunnelState>(),
-                            config_file,
-                        ));
-                        match res {
-                            Ok(_) => {}
-                            Err(e) => {
-                                println!("{}", e);
-                                std::process::exit(1);
+                            let res = block_on(fetch_config(
+                                source,
+                                &app.state::<SSHTunnelState>(),
+                                config_file,
+                            ));
+                            match res {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    println!("{}", e);
+                                    std::process::exit(1);
+                                }
                             }
                         }
+                        _ => {}
                     }
-                    _ => {}
-                },
+                }
                 Err(e) => {
                     println!("{}", e);
                     std::process::exit(1);
